@@ -98,7 +98,7 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-// Κύρια Σελίδα (Επαναφορά όλων των πεδίων)
+// Κύρια Σελίδα (Ανασχεδιασμένη χωρίς Από/Προς, με έτοιμη λίστα ατόμων)
 app.get('/', isAuthenticated, (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -142,7 +142,7 @@ app.get('/', isAuthenticated, (req, res) => {
                     <div class="form-grid">
                         <div><label>Ημερομηνία:</label><input type="date" name="date" required id="todayDate"></div>
                         <div><label>Ώρα:</label><input type="time" name="time" required></div>
-                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Δωμ. 202 - Παπαδόπουλος" required></div>
+                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
                         <div>
                             <label>Τύπος Κίνησης:</label>
                             <select name="type_move" required>
@@ -150,9 +150,21 @@ app.get('/', isAuthenticated, (req, res) => {
                                 <option value="Αναχώρηση">🛫 Αναχώρηση</option>
                             </select>
                         </div>
-                        <div><label>Από (Αφετηρία):</label><input type="text" name="from_loc" placeholder="π.χ. Λιμάνι" required></div>
-                        <div><label>Προς (Προορισμός):</label><input type="text" name="to_loc" placeholder="π.χ. Ξενοδοχείο" required></div>
-                        <div><label>Άτομα:</label><input type="number" name="pax" value="2" min="1" required></div>
+                        <div>
+                            <label>Άτομα:</label>
+                            <select name="pax" required>
+                                <option value="1">1 άτομο</option>
+                                <option value="2" selected>2 άτομα</option>
+                                <option value="3">3 άτομα</option>
+                                <option value="4">4 άτομα</option>
+                                <option value="5">5 άτομα</option>
+                                <option value="6">6 άτομα</option>
+                                <option value="7">7 άτομα</option>
+                                <option value="8">8 άτομα</option>
+                                <option value="9">9 άτομα</option>
+                                <option value="10">10 άτομα</option>
+                            </select>
+                        </div>
                         <div>
                             <label>Πλοίο / Μέσο:</label>
                             <select name="vessel">
@@ -164,7 +176,7 @@ app.get('/', isAuthenticated, (req, res) => {
                                 <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
                             </select>
                         </div>
-                        <div><label>Σημειώσεις:</label><input type="text" name="notes" placeholder="π.χ. Χρειάζεται ταξί"></div>
+                        <div style="grid-column: span 1;"><label>Σημειώσεις:</label><input type="text" name="notes" placeholder="π.χ. έξτρα σχόλια"></div>
                     </div>
                     <button type="submit" class="submit-btn">Προσθήκη στο Πρόγραμμα</button>
                 </form>
@@ -186,11 +198,11 @@ app.get('/', isAuthenticated, (req, res) => {
 });
 
 app.post('/add', isAuthenticated, (req, res) => {
-    const { date, time, room, type_move, from_loc, to_loc, pax, vessel, notes } = req.body;
+    const { date, time, room, type_move, pax, vessel, notes } = req.body;
     const transfers = loadTransfers();
     transfers.push({
         id: Date.now().toString(),
-        date, time, room, type_move, from_loc, to_loc, pax, vessel, notes
+        date, time, room, type_move, pax, vessel, notes
     });
     saveTransfers(transfers);
     res.redirect('/');
@@ -209,6 +221,7 @@ function renderSchedule() {
         return '<div class="container" style="color: #777; font-style: italic; text-align: center;">Δεν υπάρχουν προγραμματισμένα transfers.</div>';
     }
     
+    // Ταξινόμηση πρώτα ανά Ημερομηνία και μετά αυστηρά ανά Ώρα
     const sorted = [...transfers].sort((a,b) => {
         if(a.date !== b.date) return a.date.localeCompare(b.date);
         return a.time.localeCompare(b.time);
@@ -234,9 +247,8 @@ function renderSchedule() {
                         <span class="type-badge ` + typeClass + `">` + (t.type_move || 'Transfer') + `</span>
                         <b>` + t.room + `</b> (` + t.pax + ` άτομα)
                     </div>
-                    <div style="margin-top:4px; font-size:14px;">🛣️ <b>` + t.from_loc + `</b> → <b>` + t.to_loc + `</b></div>
-                    ` + (t.vessel ? `<div style="font-size:14px; color:#512da8;">🚢 <b>` + t.vessel + `</b></div>` : '') + `
-                    ` + (t.notes ? `<div style="font-size:13px; color:#666; font-style:italic;">📝 ` + t.notes + `</div>` : '') + `
+                    ` + (t.vessel ? `<div style="font-size:14px; margin-top:2px; color:#512da8;">🚢 <b>` + t.vessel + `</b></div>` : '') + `
+                    ` + (t.notes ? `<div style="font-size:13px; margin-top:2px; color:#666; font-style:italic;">📝 ` + t.notes + `</div>` : '') + `
                     <a href="/delete/` + t.id + `" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')">❌</a>
                 </div>
             `;

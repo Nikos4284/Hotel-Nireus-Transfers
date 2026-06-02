@@ -1,76 +1,73 @@
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
-const fs = require('fs');
 const path = require('path');
 
 const app = express();
-// Στο Render χρησιμοποιούμε το /opt/render/project/src/ ή τον φάκελο /data για μόνιμα αρχεία. 
-// Για απλότητα και επειδή το Render κάνει επανεκκινήσεις, ορίζουμε το αρχείο στην τρέχουσα διαδρομή.
-const DATA_FILE = path.join(__dirname, 'transfers.json');
+const PORT = process.env.PORT || 3000;
 
-const USERNAME = "nireus"; 
-const PASSWORD_PLAIN = "nireus"; 
-const HASHED_PASSWORD = bcrypt.hashSync(PASSWORD_PLAIN, 10);
+// Στοιχεία Εισόδου
+const USERNAME = "nireus";
+const PASSWORD_PLAIN = "nireus";
+const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
+
+// Αποθήκευση στη μνήμη (Array) για άμεση λειτουργία 24/7
+global.transfersMemory = global.transfersMemory || [];
 
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(session({
-    secret: 'secret-key-hotel',
+    secret: 'hotel_nireus_secret_key_123',
     resave: false,
-    saveUninitialized: true
+    saveUninitialized: true,
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-function readData() {
-    if (!fs.existsSync(DATA_FILE)) {
-        fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-    }
-    const data = fs.readFileSync(DATA_FILE);
-    return JSON.parse(data);
+function isAuthenticated(req, res, next) {
+    if (req.session.user) return next();
+    res.redirect('/login');
 }
 
-function writeData(data) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-
-function checkAuth(req, res, next) {
-    if (req.session.loggedIn) {
-        next();
-    } else {
-        res.redirect('/login');
-    }
-}
-
-function getTodayDate() {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    let mm = today.getMonth() + 1;
-    let dd = today.getDate();
-    if (mm < 10) mm = '0' + mm;
-    if (dd < 10) dd = '0' + dd;
-    return `${yyyy}-${mm}-${dd}`;
-}
-
+// Σελίδα Login
 app.get('/login', (req, res) => {
     res.send(`
-        <div style="max-width: 300px; margin: 50px auto; font-family: Arial; text-align: center; border: 1px solid #ccc; padding: 20px; border-radius: 8px; background: white;">
-            <h2>Είσοδος στο Σύστημα</h2>
-            <form action="/login" method="POST">
-                <input type="text" name="username" placeholder="Username" required style="width:90%; padding:8px; margin:5px 0;"><br>
-                <input type="password" name="password" placeholder="Password" required style="width:90%; padding:8px; margin:5px 0;"><br>
-                <button type="submit" style="width:94%; padding:10px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">Είσοδος</button>
-            </form>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Nireus Transfers - Login</title>
+            <style>
+                body { font-family: Arial, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .login-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 90%; max-width: 360px; text-align: center; }
+                input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+                button { width: 100%; padding: 12px; background: #512da8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+                button:hover { background: #673ab7; }
+                .error { color: red; margin-bottom: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <h2>Nireus Transfers</h2>
+                \${req.query.error ? '<div class="error">Λάθος στοιχεία εισόδου!</div>' : ''}
+                <form action="/login" method="POST">
+                    <input type="text" name="username" placeholder="Όνομα χρήστη (Username)" required>
+                    <input type="password" name="password" placeholder="Κωδικός (Password)" required>
+                    <button type="submit">Είσοδος</button>
+                </form>
+            </div>
+        </body>
+        </html>
     `);
 });
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === USERNAME && bcrypt.compareSync(password, HASHED_PASSWORD)) {
-        req.session.loggedIn = true;
-        res.redirect('/');
-    } else {
-        res.send("<script>alert('Λάθος στοιχεία!'); window.location='/login';</script>");
+    if (username === USERNAME && bcrypt.compareSync(password, PASSWORD_HASH)) {
+        req.session.user = username;
+        return res.redirect('/');
     }
+    res.redirect('/login?error=1');
 });
 
 app.get('/logout', (req, res) => {
@@ -78,118 +75,143 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-app.get('/', checkAuth, (req, res) => {
-    let rows = readData();
-    let selectedDate = req.query.filter_date || getTodayDate();
-    let filteredRows = rows.filter(row => row.date === selectedDate);
-    filteredRows.sort((a, b) => a.time.localeCompare(b.time));
-
-    let parts = selectedDate.split('-');
-    let formattedDate = parts[2] + '/' + parts[1] + '/' + parts[0];
-
-    let rowsHtml = '';
-    if (filteredRows.length > 0) {
-        rowsHtml += `
-            <table border="1" style="width:100%; border-collapse:collapse; text-align:left;">
-                <tr style="background:#f1f1f1;">
-                    <th style="padding:10px;">Ώρα</th>
-                    <th style="padding:10px;">Όνομα</th>
-                    <th style="padding:10px;">Άτομα</th>
-                    <th style="padding:10px;">Τύπος</th>
-                    <th style="padding:10px;">Πλοίο / Μέσο</th>
-                    <th style="padding:10px;">Ενέργεια</th>
-                </tr>
-        `;
-        filteredRows.forEach(t => {
-            rowsHtml += `
-                <tr>
-                    <td style="padding:10px;"><b>${t.time}</b></td>
-                    <td style="padding:10px;">${t.name}</td>
-                    <td style="padding:10px;">${t.guests}</td>
-                    <td style="padding:10px;">${t.type === 'arrival' ? '🛬 Άφιξη' : '🛫 Αναχώρηση'}</td>
-                    <td style="padding:10px;">${t.vessel || '-'}</td>
-                    <td style="padding:10px;"><a href="/delete/${t.id}?return_date=${selectedDate}" onclick="return confirm('Διαγραφή;')" style="color:red; text-decoration:none;">❌</a></td>
-                </tr>
-            `;
-        });
-        rowsHtml += `</table>`;
-    } else {
-        rowsHtml = `<p style="color:#666; text-align:center; padding:20px;">Δεν υπάρχουν προγραμματισμένα transfers για αυτή την ημέρα.</p>`;
-    }
-
+// Κύρια Σελίδα Ημερολογίου
+app.get('/', isAuthenticated, (req, res) => {
     res.send(`
-        <body style="font-family:Arial; max-width:800px; margin:20px auto; padding:0 10px; background:#f4f6f9;">
-            <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:10px 20px; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h2>📋 Transfer Management</h2>
-                <a href="/logout" style="color:red; font-weight:bold; text-decoration:none;">Αποσύνδεση</a>
-            </div>
-            
-            <div style="background:white; padding:15px; margin-top:20px; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:space-between;">
-                <div>
-                    <span style="font-size:16px;"><b>Επιλογή Ημέρας Προβολής:</b></span>
-                    <form action="/" method="GET" style="display:inline-block; margin-left:10px;">
-                        <input type="date" name="filter_date" value="${selectedDate}" onchange="this.form.submit()" style="padding:8px; font-size:16px; border-radius:4px; border:1px solid #ccc; cursor:pointer;">
-                    </form>
-                </div>
-                <div style="background:#007bff; color:white; padding:5px 12px; border-radius:20px; font-weight:bold;">
-                    ${filteredRows.length} Transfers
-                </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Hotel Nireus Transfers</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 15px; background: #f8f9fa; color: #333; }
+                .header { background: #512da8; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+                .header h1 { margin: 0; font-size: 20px; }
+                .logout-btn { color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 4px; font-size: 14px; }
+                .container { background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
+                h2 { margin-top: 0; color: #512da8; border-bottom: 2px solid #eee; padding-bottom: 8px; font-size: 18px; }
+                .form-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+                @media(min-width: 600px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+                label { font-weight: bold; font-size: 14px; }
+                input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
+                button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
+                .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+                .day-header { background: #e8eaf6; padding: 10px 15px; font-weight: bold; color: #1a237e; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 1px solid #ddd; }
+                .transfer-card { padding: 12px 15px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 4px; position: relative; }
+                .transfer-card:last-child { border-bottom: none; }
+                .time-badge { background: #512da8; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 13px; display: inline-block; width: max-content; }
+                .delete-btn { position: absolute; top: 12px; right: 15px; color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 14px; padding: 5px; }
+                .no-transfers { padding: 15px; color: #777; font-style: italic; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Hotel Nireus Transfers 🗓️</h1>
+                <a href="/logout" class="logout-btn">Έξοδος</a>
             </div>
 
-            <h3 style="margin-top:25px;">Δρομολόγια Ημέρας: <span style="color:#007bff;">${formattedDate}</span></h3>
-            <div style="background:white; padding:15px; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                ${rowsHtml}
+            <div class="container">
+                <h2>➕ Νέα Καταχώρηση</h2>
+                <form action="/add" method="POST">
+                    <div class="form-grid">
+                        <div><label>Ημερομηνία:</label><input type="date" name="date" required id="todayDate"></div>
+                        <div><label>Ώρα:</label><input type="time" name="time" required></div>
+                        <div><label>Δωμάτιο / Όνομα:</label><input type="text" name="room" placeholder="π.χ. Ρούσσος Δημήτρης (Δωμ. 202)" required></div>
+                        <div><label>Από (Αφετηρία):</label><input type="text" name="from_loc" placeholder="π.χ. Λιμάνι" required></div>
+                        <div><label>Προς (Προορισμός):</label><input type="text" name="to_loc" placeholder="π.χ. Ξενοδοχείο" required></div>
+                        <div><label>Άτομα:</label><input type="number" name="pax" value="2" min="1" required></div>
+                        <div>
+                            <label>Πλοίο / Μέσο:</label>
+                            <select name="vessel">
+                                <option value="">-- Επιλογή Πλοίου --</option>
+                                <option value="Παναγία Σκιαδενη">Παναγία Σκιαδενη</option>
+                                <option value="Σεμπεκο">Σεμπεκο</option>
+                                <option value="Blue Star">Blue Star</option>
+                                <option value="Saos">Saos</option>
+                                <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
+                            </select>
+                        </div>
+                        <div><label>Σημειώσεις:</label><input type="text" name="notes" placeholder="π.χ. Χρειάζεται ταξί"></div>
+                    </div>
+                    <button type="submit" class="submit-btn">Προσθήκη στο Πρόγραμμα</button>
+                </form>
             </div>
 
-            <h3 style="margin-top:30px;">Καταχώρηση Νέου Transfer</h3>
-            <form action="/add" method="POST" style="background:white; padding:20px; border-radius:8px; display:grid; grid-template-columns: 1fr 1fr; gap:15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom:5px;">
-                <input type="hidden" name="current_filter" value="${selectedDate}">
-                <div><label><b>Ημερομηνία:</b></label><br><input type="date" name="date" value="${selectedDate}" required style="width:95%; padding:8px; margin-top:5px;"></div>
-                <div><label><b>Ώρα:</b></label><br><input type="time" name="time" required style="width:95%; padding:8px; margin-top:5px;"></div>
-                <div><label><b>Όνομα Πελάτη:</b></label><br><input type="text" name="name" required style="width:95%; padding:8px; margin-top:5px;"></div>
-                <div><label><b>Αριθμός Ατόμων:</b></label><br><input type="number" name="guests" min="1" required style="width:95%; padding:8px; margin-top:5px;"></div>
-                <div><label><b>Τύπος:</b></label><br>
-                    <select name="type" style="width:100%; padding:8px; margin-top:5px;">
-                        <option value="arrival">Άφιξη</option>
-                        <option value="departure">Αναχώρηση</option>
-                    </select>
-                </div>
-                <div><label><b>Πλοίο / Μέσο:</b></label><br>
-    <select name="vessel" style="width:100%; padding:8px; margin-top:5px;">
-        <option value="">-- Επιλογή Πλοίου --</option>
-        <option value="Παναγία Σκιαδενη">Παναγία Σκιαδενη</option>
-        <option value="Σεμπεκο">Σεμπεκο</option>
-        <option value="Blue Star">Blue Star</option>
-        <option value="Saos">Saos</option>
-        <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
-    </select>
-</div>
+            <h2>📅 Πρόγραμμα Μεταφορών</h2>
+            <div id="schedule">
+                \${renderSchedule()}
+            </div>
 
-                <button type="submit" style="grid-column: span 2; padding:12px; background:#28a745; color:white; border:none; cursor:pointer; font-size:16px; border-radius:4px; font-weight:bold;">Προσθήκη στο Πρόγραμμα</button>
-            </form>
+            <script>
+                // Βάζει αυτόματα τη σημερινή ημερομηνία στο κουτί
+                if(!document.getElementById('todayDate').value) {
+                    const today = new Date().toISOString().split('T')[0];
+                    document.getElementById('todayDate').value = today;
+                }
+            </script>
         </body>
+        </html>
     `);
 });
 
-app.post('/add', checkAuth, (req, res) => {
-    const { date, name, guests, type, vessel, time, current_filter } = req.body;
-    let data = readData();
-    const newTransfer = { id: Date.now().toString(), date, name, guests, type, vessel, time };
-    data.push(newTransfer);
-    writeData(data);
-    res.redirect('/?filter_date=' + current_filter);
+// Διαχείριση δεδομένων
+app.post('/add', isAuthenticated, (req, res) => {
+    const { date, time, room, from_loc, to_loc, pax, vessel, notes } = req.body;
+    const newTransfer = {
+        id: Date.now().toString(),
+        date, time, room, from_loc, to_loc, pax, vessel, notes
+    };
+    global.transfersMemory.push(newTransfer);
+    res.redirect('/');
 });
 
-app.get('/delete/:id', checkAuth, (req, res) => {
-    let data = readData();
-    data = data.filter(item => item.id !== req.params.id);
-    writeData(data);
-    const returnDate = req.query.return_date || getTodayDate();
-    res.redirect('/?filter_date=' + returnDate);
+app.get('/delete/:id', isAuthenticated, (req, res) => {
+    global.transfersMemory = global.transfersMemory.filter(t => t.id !== req.params.id);
+    res.redirect('/');
 });
 
-// Χρήση της θύρας που δίνει το Render αυτόματα
-const PORT = process.env.PORT || 3000;
+function renderSchedule() {
+    if (global.transfersMemory.length === 0) {
+        return '<div class="container no-transfers">Δεν υπάρχουν προγραμματισμένα transfers.</div>';
+    }
+
+    // Ταξινόμηση ανά ημερομηνία και ώρα
+    const sorted = [...global.transfersMemory].sort((a,b) => {
+        if(a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.time.localeCompare(b.time);
+    });
+
+    // Ομαδοποίηση ανά ημέρα
+    const groups = {};
+    sorted.forEach(t => {
+        if(!groups[t.date]) groups[t.date] = [];
+        groups[t.date].push(t);
+    });
+
+    let html = '';
+    for (const date in groups) {
+        const d = new Date(date);
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const formattedDate = d.toLocaleDateString('el-GR', options);
+
+        html += `<div class="day-block"><div class="day-header">\${formattedDate}</div>`;
+        groups[date].forEach(t => {
+            html += `
+                <div class="transfer-card">
+                    <div><span class="time-badge">\${t.time}</span> <b>\${t.room}</b> (\${t.pax} άτομα)</div>
+                    <div style="margin-top:4px; font-size:14px;">🛣️ <b>\${t.from_loc}</b> → <b>\${t.to_loc}</b></div>
+                    \${t.vessel ? `<div style="font-size:14px; color:#512da8;">🚢 <b>\${t.vessel}</b></div>` : ''}
+                    \${t.notes ? `<div style="font-size:13px; color:#666; font-style:italic;">📝 \${t.notes}</div>` : ''}
+                    <a href="/delete/\${t.id}" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')">❌</a>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+    return html;
+}
+
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port \${PORT}`);
 });

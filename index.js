@@ -5,12 +5,10 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Στοιχεία εισόδου
 const USERNAME = "nireus";
 const PASSWORD_PLAIN = "nireus";
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
 
-// Μνήμη του server
 global.transfersMemory = global.transfersMemory || [];
 
 app.use(express.urlencoded({ extended: true }));
@@ -27,8 +25,12 @@ function isAuthenticated(req, res, next) {
     res.redirect('/login');
 }
 
-// Σελίδα Login
 app.get('/login', (req, res) => {
+    let errorHTML = '';
+    if (req.query.error) {
+        errorHTML = '<div style="color: red; margin-bottom: 10px;">Λάθος στοιχεία εισόδου!</div>';
+    }
+
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -41,14 +43,12 @@ app.get('/login', (req, res) => {
                 .login-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 90%; max-width: 360px; text-align: center; }
                 input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
                 button { width: 100%; padding: 12px; background: #512da8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-                button:hover { background: #673ab7; }
-                .error { color: red; margin-bottom: 10px; }
             </style>
         </head>
         <body>
             <div class="login-box">
                 <h2>Nireus Transfers</h2>
-                \${req.query.error ? '<div class="error">Λάθος στοιχεία εισόδου!</div>' : ''}
+                ` + errorHTML + `
                 <form action="/login" method="POST">
                     <input type="text" name="username" placeholder="Username" required>
                     <input type="password" name="password" placeholder="Password" required>
@@ -74,7 +74,6 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-// Κύρια Σελίδα
 app.get('/', isAuthenticated, (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -91,17 +90,14 @@ app.get('/', isAuthenticated, (req, res) => {
                 .container { background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
                 h2 { margin-top: 0; color: #512da8; border-bottom: 2px solid #eee; padding-bottom: 8px; font-size: 18px; }
                 .form-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-                @media(min-width: 600px) { .form-grid { grid-template-columns: 1fr 1fr; } }
                 label { font-weight: bold; font-size: 14px; }
                 input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
                 button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
-                .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-                .day-header { background: #e8eaf6; padding: 10px 15px; font-weight: bold; color: #1a237e; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 1px solid #ddd; }
-                .transfer-card { padding: 12px 15px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 4px; position: relative; }
-                .transfer-card:last-child { border-bottom: none; }
-                .time-badge { background: #512da8; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 13px; display: inline-block; width: max-content; }
-                .delete-btn { position: absolute; top: 12px; right: 15px; color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 14px; padding: 5px; }
-                .no-transfers { padding: 15px; color: #777; font-style: italic; text-align: center; }
+                .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; }
+                .day-header { background: #e8eaf6; padding: 10px 15px; font-weight: bold; color: #1a237e; border-top-left-radius: 5px; border-top-right-radius: 5px; }
+                .transfer-card { padding: 12px 15px; border-bottom: 1px solid #eee; position: relative; }
+                .time-badge { background: #512da8; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 13px; }
+                .delete-btn { position: absolute; top: 12px; right: 15px; color: #d32f2f; text-decoration: none; font-weight: bold; }
             </style>
         </head>
         <body>
@@ -116,9 +112,9 @@ app.get('/', isAuthenticated, (req, res) => {
                     <div class="form-grid">
                         <div><label>Ημερομηνία:</label><input type="date" name="date" required id="todayDate"></div>
                         <div><label>Ώρα:</label><input type="time" name="time" required></div>
-                        <div><label>Δωμάτιο / Όνομα:</label><input type="text" name="room" placeholder="π.χ. Δωμ. 202 - Παπαδόπουλος" required></div>
-                        <div><label>Από (Αφετηρία):</label><input type="text" name="from_loc" placeholder="π.χ. Λιμάνι" required></div>
-                        <div><label>Προς (Προορισμός):</label><input type="text" name="to_loc" placeholder="π.χ. Ξενοδοχείο" required></div>
+                        <div><label>Δωμάτιο / Όνομα:</label><input type="text" name="room" required></div>
+                        <div><label>Από:</label><input type="text" name="from_loc" required></div>
+                        <div><label>Προς:</label><input type="text" name="to_loc" required></div>
                         <div><label>Άτομα:</label><input type="number" name="pax" value="2" min="1" required></div>
                         <div>
                             <label>Πλοίο / Μέσο:</label>
@@ -131,7 +127,7 @@ app.get('/', isAuthenticated, (req, res) => {
                                 <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
                             </select>
                         </div>
-                        <div><label>Σημειώσεις:</label><input type="text" name="notes" placeholder="π.χ. Χρειάζεται ταξί"></div>
+                        <div><label>Σημειώσεις:</label><input type="text" name="notes"></div>
                     </div>
                     <button type="submit" class="submit-btn">Προσθήκη στο Πρόγραμμα</button>
                 </form>
@@ -139,13 +135,12 @@ app.get('/', isAuthenticated, (req, res) => {
 
             <h2>📅 Πρόγραμμα Μεταφορών</h2>
             <div id="schedule">
-                \${renderSchedule()}
+                ` + renderSchedule() + `
             </div>
 
             <script>
                 if(!document.getElementById('todayDate').value) {
-                    const today = new Date().toISOString().split('T')[0];
-                    document.getElementById('todayDate').value = today;
+                    document.getElementById('todayDate').value = new Date().toISOString().split('T')[0];
                 }
             </script>
         </body>
@@ -169,30 +164,31 @@ app.get('/delete/:id', isAuthenticated, (req, res) => {
 
 function renderSchedule() {
     if (!global.transfersMemory || global.transfersMemory.length === 0) {
-        return '<div class="container no-transfers">Δεν υπάρχουν προγραμματισμένα transfers.</div>';
+        return '<div class="container">Δεν υπάρχουν προγραμματισμένα transfers.</div>';
     }
+    
     const sorted = [...global.transfersMemory].sort((a,b) => {
         if(a.date !== b.date) return a.date.localeCompare(b.date);
         return a.time.localeCompare(b.time);
     });
+
     const groups = {};
     sorted.forEach(t => {
         if(!groups[t.date]) groups[t.date] = [];
         groups[t.date].push(t);
     });
+
     let html = '';
     for (const date in groups) {
-        const d = new Date(date);
-        const formattedDate = d.toLocaleDateString('el-GR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        html += `<div class="day-block"><div class="day-header">\${formattedDate}</div>`;
+        html += '<div class="day-block"><div class="day-header">' + date + '</div>';
         groups[date].forEach(t => {
             html += `
                 <div class="transfer-card">
-                    <div><span class="time-badge">\${t.time}</span> <b>\${t.room}</b> (\${t.pax} άτομα)</div>
-                    <div style="margin-top:4px; font-size:14px;">🛣️ <b>\${t.from_loc}</b> → <b>\${t.to_loc}</b></div>
-                    \${t.vessel ? `<div style="font-size:14px; color:#512da8;">🚢 <b>\${t.vessel}</b></div>` : ''}
-                    \${t.notes ? `<div style="font-size:13px; color:#666; font-style:italic;">📝 \${t.notes}</div>` : ''}
-                    <a href="/delete/\${t.id}" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')">❌</a>
+                    <div><span class="time-badge">` + t.time + `</span> <b>` + t.room + `</b> (` + t.pax + ` άτομα)</div>
+                    <div style="margin-top:4px; font-size:14px;">🛣️ <b>` + t.from_loc + `</b> → <b>` + t.to_loc + `</b></div>
+                    ` + (t.vessel ? `<div style="font-size:14px; color:#512da8;">🚢 <b>` + t.vessel + `</b></div>` : '') + `
+                    ` + (t.notes ? `<div style="font-size:13px; color:#666; font-style:italic;">📝 ` + t.notes + `</div>` : '') + `
+                    <a href="/delete/` + t.id + `" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')">❌</a>
                 </div>
             `;
         });
@@ -202,5 +198,5 @@ function renderSchedule() {
 }
 
 app.listen(PORT, () => {
-    console.log(`Server running on port \${PORT}`);
+    console.log("Server running!");
 });

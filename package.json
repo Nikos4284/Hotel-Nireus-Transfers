@@ -2,6 +2,9 @@
   "name": "hotel-transfers",
   "version": "1.0.0",
   "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "express": "^4.19.2",

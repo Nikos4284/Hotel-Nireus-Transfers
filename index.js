@@ -154,7 +154,17 @@ app.get('/', checkAuth, (req, res) => {
                         <option value="departure">Αναχώρηση</option>
                     </select>
                 </div>
-                <div><label><b>Πλοίο / Σχόλια:</b></label><br><input type="text" name="vessel" style="width:95%; padding:8px; margin-top:5px;"></div>
+                <div><label><b>Πλοίο / Μέσο:</b></label><br>
+    <select name="vessel" style="width:100%; padding:8px; margin-top:5px;">
+        <option value="">-- Επιλογή Πλοίου --</option>
+        <option value="Παναγία Σκιαδενη">Παναγία Σκιαδενη</option>
+        <option value="Σεμπεκο">Σεμπεκο</option>
+        <option value="Blue Star">Blue Star</option>
+        <option value="Saos">Saos</option>
+        <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
+    </select>
+</div>
+
                 <button type="submit" style="grid-column: span 2; padding:12px; background:#28a745; color:white; border:none; cursor:pointer; font-size:16px; border-radius:4px; font-weight:bold;">Προσθήκη στο Πρόγραμμα</button>
             </form>
         </body>

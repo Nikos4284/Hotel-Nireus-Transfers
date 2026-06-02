@@ -1,23 +1,22 @@
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Στοιχεία Εισόδου
+// Στοιχεία εισόδου
 const USERNAME = "nireus";
 const PASSWORD_PLAIN = "nireus";
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
 
-// Αποθήκευση στη μνήμη (Array) για άμεση λειτουργία 24/7
+// Μνήμη του server
 global.transfersMemory = global.transfersMemory || [];
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-    secret: 'hotel_nireus_secret_key_123',
+    secret: 'hotel_nireus_secure_key_2026',
     resave: false,
     saveUninitialized: true,
     cookie: { maxAge: 24 * 60 * 60 * 1000 }
@@ -51,8 +50,8 @@ app.get('/login', (req, res) => {
                 <h2>Nireus Transfers</h2>
                 \${req.query.error ? '<div class="error">Λάθος στοιχεία εισόδου!</div>' : ''}
                 <form action="/login" method="POST">
-                    <input type="text" name="username" placeholder="Όνομα χρήστη (Username)" required>
-                    <input type="password" name="password" placeholder="Κωδικός (Password)" required>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
                     <button type="submit">Είσοδος</button>
                 </form>
             </div>
@@ -75,7 +74,7 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-// Κύρια Σελίδα Ημερολογίου
+// Κύρια Σελίδα
 app.get('/', isAuthenticated, (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -94,7 +93,7 @@ app.get('/', isAuthenticated, (req, res) => {
                 .form-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
                 @media(min-width: 600px) { .form-grid { grid-template-columns: 1fr 1fr; } }
                 label { font-weight: bold; font-size: 14px; }
-                input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
+                input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
                 button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
                 .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
                 .day-header { background: #e8eaf6; padding: 10px 15px; font-weight: bold; color: #1a237e; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 1px solid #ddd; }
@@ -117,7 +116,7 @@ app.get('/', isAuthenticated, (req, res) => {
                     <div class="form-grid">
                         <div><label>Ημερομηνία:</label><input type="date" name="date" required id="todayDate"></div>
                         <div><label>Ώρα:</label><input type="time" name="time" required></div>
-                        <div><label>Δωμάτιο / Όνομα:</label><input type="text" name="room" placeholder="π.χ. Ρούσσος Δημήτρης (Δωμ. 202)" required></div>
+                        <div><label>Δωμάτιο / Όνομα:</label><input type="text" name="room" placeholder="π.χ. Δωμ. 202 - Παπαδόπουλος" required></div>
                         <div><label>Από (Αφετηρία):</label><input type="text" name="from_loc" placeholder="π.χ. Λιμάνι" required></div>
                         <div><label>Προς (Προορισμός):</label><input type="text" name="to_loc" placeholder="π.χ. Ξενοδοχείο" required></div>
                         <div><label>Άτομα:</label><input type="number" name="pax" value="2" min="1" required></div>
@@ -144,7 +143,6 @@ app.get('/', isAuthenticated, (req, res) => {
             </div>
 
             <script>
-                // Βάζει αυτόματα τη σημερινή ημερομηνία στο κουτί
                 if(!document.getElementById('todayDate').value) {
                     const today = new Date().toISOString().split('T')[0];
                     document.getElementById('todayDate').value = today;
@@ -155,14 +153,12 @@ app.get('/', isAuthenticated, (req, res) => {
     `);
 });
 
-// Διαχείριση δεδομένων
 app.post('/add', isAuthenticated, (req, res) => {
     const { date, time, room, from_loc, to_loc, pax, vessel, notes } = req.body;
-    const newTransfer = {
+    global.transfersMemory.push({
         id: Date.now().toString(),
         date, time, room, from_loc, to_loc, pax, vessel, notes
-    };
-    global.transfersMemory.push(newTransfer);
+    });
     res.redirect('/');
 });
 
@@ -172,29 +168,22 @@ app.get('/delete/:id', isAuthenticated, (req, res) => {
 });
 
 function renderSchedule() {
-    if (global.transfersMemory.length === 0) {
+    if (!global.transfersMemory || global.transfersMemory.length === 0) {
         return '<div class="container no-transfers">Δεν υπάρχουν προγραμματισμένα transfers.</div>';
     }
-
-    // Ταξινόμηση ανά ημερομηνία και ώρα
     const sorted = [...global.transfersMemory].sort((a,b) => {
         if(a.date !== b.date) return a.date.localeCompare(b.date);
         return a.time.localeCompare(b.time);
     });
-
-    // Ομαδοποίηση ανά ημέρα
     const groups = {};
     sorted.forEach(t => {
         if(!groups[t.date]) groups[t.date] = [];
         groups[t.date].push(t);
     });
-
     let html = '';
     for (const date in groups) {
         const d = new Date(date);
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const formattedDate = d.toLocaleDateString('el-GR', options);
-
+        const formattedDate = d.toLocaleDateString('el-GR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         html += `<div class="day-block"><div class="day-header">\${formattedDate}</div>`;
         groups[date].forEach(t => {
             html += `

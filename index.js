@@ -108,16 +108,6 @@ app.get('/', isAuthenticated, (req, res) => {
     const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
     const selectedDate = req.query.date || localISODate;
 
-    // Δημιουργία επιλογών 24ωρης ώρας ανά μισάωρο
-    let timeOptions = '';
-    for(let h=0; h<24; h++) {
-        let hourStr = h < 10 ? '0' + h : h;
-        ['00', '30'].forEach(m => {
-            let tStr = hourStr + ':' + m;
-            timeOptions += `<option value="${tStr}">${tStr}</option>`;
-        });
-    }
-
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -173,18 +163,24 @@ app.get('/', isAuthenticated, (req, res) => {
                 </form>
             </div>
 
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <h2>📅 Πρόγραμμα Μεταφορών</h2>
+                <button onclick="window.print()" class="print-btn">📤 Αποστολή / Εκτύπωση</button>
+            </div>
+            
+            <div id="schedule" style="margin-bottom: 30px;">
+                ` + renderScheduleForDate(selectedDate) + `
+            </div>
+
             <div class="container">
                 <h2>➕ Νέα Καταχώρηση για την ημέρα αυτή</h2>
                 <form action="/add" method="POST">
                     <input type="hidden" name="date" value="` + selectedDate + `">
                     
                     <div class="form-grid">
-                        <!-- ΝΕΟ DROPDOWN ΜΕΝΟΥ ΓΙΑ 100% 24ΩΡΗ ΜΟΡΦΗ -->
                         <div>
-                            <label>Ώρα (24h):</label>
-                            <select name="time" required>
-                                ` + timeOptions + `
-                            </select>
+                            <label>Ώρα (24h - π.χ. 17:15):</label>
+                            <input type="time" name="time" required style="font-variant-numeric: tabular-nums;" autocomplete="off">
                         </div>
                         <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
                         <div>
@@ -224,15 +220,6 @@ app.get('/', isAuthenticated, (req, res) => {
                     </div>
                     <button type="submit" class="submit-btn">Προσθήκη στο Πρόγραμμα</button>
                 </form>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <h2>📅 Πρόγραμμα Μεταφορών</h2>
-                <button onclick="window.print()" class="print-btn">📤 Αποστολή / Εκτύπωση</button>
-            </div>
-            
-            <div id="schedule">
-                ` + renderScheduleForDate(selectedDate) + `
             </div>
         </body>
         </html>
@@ -299,5 +286,5 @@ function renderScheduleForDate(targetDate) {
 }
 
 app.listen(PORT, () => {
-    console.log("Server finalized with secure multidrive sync and custom 24h select!");
+    console.log("Server running with custom free 24h format and top-aligned schedule visualization!");
 });

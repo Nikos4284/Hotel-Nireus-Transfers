@@ -11,12 +11,12 @@ const USERNAME = "nireus";
 const PASSWORD_PLAIN = "nireus";
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
 
-// Ρύθμιση για τον ΜΟΝΙΜΟ ΔΙΣΚΟ του Render
-const RENDER_DISK_DIR = '/data';
+// Εξασφάλιση μόνιμης αποθήκευσης σε οποιαδήποτε δομή του Render
 let DATA_FILE = path.join(__dirname, 'transfers.json');
-
-if (fs.existsSync(RENDER_DISK_DIR)) {
-    DATA_FILE = path.join(RENDER_DISK_DIR, 'transfers.json');
+if (fs.existsSync('/data')) {
+    DATA_FILE = '/data/transfers.json';
+} else if (fs.existsSync('/opt/render/project/src/data')) {
+    DATA_FILE = '/opt/render/project/src/data/transfers.json';
 }
 
 function loadTransfers() {
@@ -59,7 +59,6 @@ app.get('/login', (req, res) => {
     if (req.query.error) {
         errorHTML = '<div style="color: red; margin-bottom: 10px;">Λάθος στοιχεία εισόδου!</div>';
     }
-
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -105,12 +104,19 @@ app.get('/logout', (req, res) => {
 
 // Κύρια Σελίδα
 app.get('/', isAuthenticated, (req, res) => {
-    // Υπολογισμός της σημερινής ημερομηνίας σε μορφή YYYY-MM-DD με βάση την τοπική ώρα
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
     const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
-    
-    // Αν δεν υπάρχει επιλεγμένη ημερομηνία στο URL, δείχνει ΑΥΤΟΜΑΤΑ τη σημερινή
     const selectedDate = req.query.date || localISODate;
+
+    // Δημιουργία επιλογών 24ωρης ώρας ανά μισάωρο
+    let timeOptions = '';
+    for(let h=0; h<24; h++) {
+        let hourStr = h < 10 ? '0' + h : h;
+        ['00', '30'].forEach(m => {
+            let tStr = hourStr + ':' + m;
+            timeOptions += `<option value="${tStr}">${tStr}</option>`;
+        });
+    }
 
     res.send(`
         <!DOCTYPE html>
@@ -132,9 +138,7 @@ app.get('/', isAuthenticated, (req, res) => {
                 label { font-weight: bold; font-size: 14px; }
                 input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
                 button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
-                
                 .print-btn { background: #0288d1; color: white; border: none; padding: 10px 16px; border-radius: 4px; font-size: 15px; cursor: pointer; font-weight: bold; margin-bottom: 15px; display: inline-flex; align-items: center; gap: 8px; }
-                
                 .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
                 .day-header { background: #512da8; padding: 10px 15px; font-weight: bold; color: white; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 1px solid #ddd; }
                 .transfer-card { padding: 12px 15px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 4px; position: relative; }
@@ -175,7 +179,13 @@ app.get('/', isAuthenticated, (req, res) => {
                     <input type="hidden" name="date" value="` + selectedDate + `">
                     
                     <div class="form-grid">
-                        <div><label>Ώρα (24ωρη μορφή):</label><input type="time" name="time" step="60" required></div>
+                        <!-- ΝΕΟ DROPDOWN ΜΕΝΟΥ ΓΙΑ 100% 24ΩΡΗ ΜΟΡΦΗ -->
+                        <div>
+                            <label>Ώρα (24h):</label>
+                            <select name="time" required>
+                                ` + timeOptions + `
+                            </select>
+                        </div>
                         <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
                         <div>
                             <label>Τύπος Κίνησης:</label>
@@ -289,5 +299,5 @@ function renderScheduleForDate(targetDate) {
 }
 
 app.listen(PORT, () => {
-    console.log("Server running with 24h time format and dynamic today default!");
+    console.log("Server finalized with secure multidrive sync and custom 24h select!");
 });

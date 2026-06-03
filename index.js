@@ -11,8 +11,13 @@ const USERNAME = "nireus";
 const PASSWORD_PLAIN = "nireus";
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
 
-// Αρχείο μόνιμης αποθήκευσης στον Starter server
-const DATA_FILE = path.join(__dirname, 'transfers.json');
+// Ρύθμιση για τον ΜΟΝΙΜΟ ΔΙΣΚΟ του Render
+const RENDER_DISK_DIR = '/data';
+let DATA_FILE = path.join(__dirname, 'transfers.json');
+
+if (fs.existsSync(RENDER_DISK_DIR)) {
+    DATA_FILE = path.join(RENDER_DISK_DIR, 'transfers.json');
+}
 
 function loadTransfers() {
     try {
@@ -21,7 +26,7 @@ function loadTransfers() {
             return JSON.parse(data);
         }
     } catch (e) {
-        console.log("Error reading file");
+        console.log("Error reading file", e);
     }
     return [];
 }
@@ -30,7 +35,7 @@ function saveTransfers(transfers) {
     try {
         fs.writeFileSync(DATA_FILE, JSON.stringify(transfers, null, 2), 'utf8');
     } catch (e) {
-        console.log("Error writing file");
+        console.log("Error writing file", e);
     }
 }
 
@@ -100,7 +105,12 @@ app.get('/logout', (req, res) => {
 
 // Κύρια Σελίδα
 app.get('/', isAuthenticated, (req, res) => {
-    const selectedDate = req.query.date || new Date().toISOString().split('T')[0];
+    // Υπολογισμός της σημερινής ημερομηνίας σε μορφή YYYY-MM-DD με βάση την τοπική ώρα
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
+    
+    // Αν δεν υπάρχει επιλεγμένη ημερομηνία στο URL, δείχνει ΑΥΤΟΜΑΤΑ τη σημερινή
+    const selectedDate = req.query.date || localISODate;
 
     res.send(`
         <!DOCTYPE html>
@@ -123,7 +133,6 @@ app.get('/', isAuthenticated, (req, res) => {
                 input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
                 button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
                 
-                /* Στυλ για το κουμπί εκτύπωσης/αποστολής */
                 .print-btn { background: #0288d1; color: white; border: none; padding: 10px 16px; border-radius: 4px; font-size: 15px; cursor: pointer; font-weight: bold; margin-bottom: 15px; display: inline-flex; align-items: center; gap: 8px; }
                 
                 .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
@@ -136,7 +145,6 @@ app.get('/', isAuthenticated, (req, res) => {
                 .departure { background: #ffebee; color: #c62828; }
                 .delete-btn { position: absolute; top: 12px; right: 15px; color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 14px; padding: 5px; }
 
-                /* Κανόνες για καθαρή εκτύπωση/PDF (κρύβει μενού και φόρμες) */
                 @media print {
                     body { background: white; padding: 0; }
                     .header, .date-picker-box, .container, .print-btn, .delete-btn, h2 { display: none !important; }
@@ -167,7 +175,7 @@ app.get('/', isAuthenticated, (req, res) => {
                     <input type="hidden" name="date" value="` + selectedDate + `">
                     
                     <div class="form-grid">
-                        <div><label>Ώρα:</label><input type="time" name="time" required></div>
+                        <div><label>Ώρα (24ωρη μορφή):</label><input type="time" name="time" step="60" required></div>
                         <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
                         <div>
                             <label>Τύπος Κίνησης:</label>
@@ -281,5 +289,5 @@ function renderScheduleForDate(targetDate) {
 }
 
 app.listen(PORT, () => {
-    console.log("Server running on paid tier!");
+    console.log("Server running with 24h time format and dynamic today default!");
 });

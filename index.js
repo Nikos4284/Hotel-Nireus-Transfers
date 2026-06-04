@@ -7,9 +7,15 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const USERNAME = "nireus";
-const PASSWORD_PLAIN = "nireus";
-const PASSWORD_HASH = bcrypt.hashSync(PASSWORD_PLAIN, 10);
+// Διαχειριστής (Πλήρη δικαιώματα)
+const ADMIN_USER = "admin";
+const ADMIN_PASS_PLAIN = "admin";
+const ADMIN_HASH = bcrypt.hashSync(ADMIN_PASS_PLAIN, 10);
+
+// Οδηγοί (Μόνο προβολή)
+const DRIVER_USER = "nireus";
+const DRIVER_PASS_PLAIN = "nireus";
+const DRIVER_HASH = bcrypt.hashSync(DRIVER_PASS_PLAIN, 10);
 
 // Εξασφάλιση μόνιμης αποθήκευσης σε οποιαδήποτε δομή του Render
 let DATA_FILE = path.join(__dirname, 'transfers.json');
@@ -53,6 +59,11 @@ function isAuthenticated(req, res, next) {
     res.redirect('/login');
 }
 
+// Έλεγχος αν ο συνδεδεμένος χρήστης είναι Admin (ξενοδοχείο)
+function isAdmin(req) {
+    return req.session.user === ADMIN_USER;
+}
+
 // Σελίδα Login
 app.get('/login', (req, res) => {
     let errorHTML = '';
@@ -90,7 +101,10 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === USERNAME && bcrypt.compareSync(password, PASSWORD_HASH)) {
+    if (username === ADMIN_USER && bcrypt.compareSync(password, ADMIN_HASH)) {
+        req.session.user = username;
+        return res.redirect('/');
+    } else if (username === DRIVER_USER && bcrypt.compareSync(password, DRIVER_HASH)) {
         req.session.user = username;
         return res.redirect('/');
     }
@@ -108,12 +122,62 @@ app.get('/', isAuthenticated, (req, res) => {
     const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
     const selectedDate = req.query.date || localISODate;
     const editId = req.query.edit || null;
+    
+    const userIsAdmin = isAdmin(req);
 
     let editData = { id: '', time: '', room: '', type_move: 'Άφιξη', pax: '2', vessel: '', notes: '' };
-    if (editId) {
+    if (editId && userIsAdmin) {
         const transfers = loadTransfers();
         const found = transfers.find(t => t.id === editId);
         if (found) editData = found;
+    }
+
+    let actionFormHTML = '';
+    if (userIsAdmin) {
+        actionFormHTML = `
+            <div class="container ` + (editId ? 'edit-mode' : '') + `">
+                <h2>` + (editId ? '✏️ Επεξεργασία Καταχώρησης' : '➕ Νέα Καταχώρηση για την ημέρα αυτή') + `</h2>
+                <form action="` + (editId ? '/update' : '/add') + `" method="POST">
+                    <input type="hidden" name="date" value="` + selectedDate + `">
+                    ` + (editId ? `<input type="hidden" name="id" value="` + editData.id + `">` : '') + `
+                    
+                    <div class="form-grid">
+                        <div>
+                            <label>Ώρα (24h - π.χ. 17:15):</label>
+                            <input type="time" name="time" value="` + editData.time + `" required style="font-variant-numeric: tabular-nums;" autocomplete="off">
+                        </div>
+                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" value="` + editData.room + `" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
+                        <div>
+                            <label>Τύπος Κίνησης:</label>
+                            <select name="type_move" required>
+                                <option value="Άφιξη" ` + (editData.type_move === 'Άφιξη' ? 'selected' : '') + `>🛬 Άφιξη</option>
+                                <option value="Αναχώρηση" ` + (editData.type_move === 'Αναχώρηση' ? 'selected' : '') + `>🛫 Αναχώρηση</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Άτομα:</label>
+                            <select name="pax" required>
+                                ` + [1,2,3,4,5,6,7,8,9,10].map(n => `<option value="`+n+`" `+(editData.pax == n ? 'selected' : '')+`>`+n+` άτομα</option>`).join('') + `
+                            </select>
+                        </div>
+                        <div>
+                            <label>Πλοίο / Μέσο:</label>
+                            <select name="vessel">
+                                <option value="">-- Επιλογή Πλοίου --</option>
+                                <option value="Παναγία Σκιαδενη" ` + (editData.vessel === 'Παναγία Σκιαδενη' ? 'selected' : '') + `>Παναγία Σκιαδενη</option>
+                                <option value="Σεμπεκο" ` + (editData.vessel === 'Σεμπεκο' ? 'selected' : '') + `>Σεμπεκο</option>
+                                <option value="Blue Star" ` + (editData.vessel === 'Blue Star' ? 'selected' : '') + `>Blue Star</option>
+                                <option value="Saos" ` + (editData.vessel === 'Saos' ? 'selected' : '') + `>Saos</option>
+                                <option value="Άλλο / Σχόλιο" ` + (editData.vessel === 'Άλλο / Σχόλιο' ? 'selected' : '') + `>Άλλο / Σχόλιο</option>
+                            </select>
+                        </div>
+                        <div><label>Σημειώσεις:</label><input type="text" name="notes" value="` + editData.notes + `" placeholder="π.χ. έξτρα σχόλια"></div>
+                    </div>
+                    <button type="submit" class="submit-btn ` + (editId ? 'update-btn' : '') + `">` + (editId ? 'Αποθήκευση Αλλαγών' : 'Προσθήκη στο Πρόγραμμα') + `</button>
+                    ` + (editId ? `<a href="/?date=` + selectedDate + `" class="cancel-edit-btn">Ακύρωση Επεξεργασίας</a>` : '') + `
+                </form>
+            </div>
+        `;
     }
 
     res.send(`
@@ -166,11 +230,14 @@ app.get('/', isAuthenticated, (req, res) => {
         <body>
             <div class="header">
                 <h1>Hotel Nireus Transfers 🗓️</h1>
-                <a href="/logout" class="logout-btn">Έξοδος</a>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; background: rgba(255,255,255,0.15); padding: 4px 8px; border-radius: 4px;">👤 ` + req.session.user + `</span>
+                    <a href="/logout" class="logout-btn">Έξοδος</a>
+                </div>
             </div>
 
             <div class="date-picker-box">
-                <label style="color: #1a237e; font-size: 16px;">📅 Επιλέξτε Ημερομηνία για Προβολή & Καταχώρηση:</label>
+                <label style="color: #1a237e; font-size: 16px;">📅 Επιλέξτε Ημερομηνία για Προβολή:</label>
                 <form action="/" method="GET" id="dateForm">
                     <input type="date" name="date" value="` + selectedDate + `" onchange="document.getElementById('dateForm').submit()" style="font-size: 18px; padding: 10px; margin-top: 8px; border: 2px solid #512da8;">
                 </form>
@@ -182,57 +249,17 @@ app.get('/', isAuthenticated, (req, res) => {
             </div>
             
             <div id="schedule" style="margin-bottom: 30px;">
-                ` + renderScheduleForDate(selectedDate) + `
+                ` + renderScheduleForDate(selectedDate, userIsAdmin) + `
             </div>
 
-            <div class="container ` + (editId ? 'edit-mode' : '') + `">
-                <h2>` + (editId ? '✏️ Επεξεργασία Καταχώρησης' : '➕ Νέα Καταχώρηση για την ημέρα αυτή') + `</h2>
-                <form action="` + (editId ? '/update' : '/add') + `" method="POST">
-                    <input type="hidden" name="date" value="` + selectedDate + `">
-                    ` + (editId ? `<input type="hidden" name="id" value="` + editData.id + `">` : '') + `
-                    
-                    <div class="form-grid">
-                        <div>
-                            <label>Ώρα (24h - π.χ. 17:15):</label>
-                            <input type="time" name="time" value="` + editData.time + `" required style="font-variant-numeric: tabular-nums;" autocomplete="off">
-                        </div>
-                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" value="` + editData.room + `" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
-                        <div>
-                            <label>Τύπος Κίνησης:</label>
-                            <select name="type_move" required>
-                                <option value="Άφιξη" ` + (editData.type_move === 'Άφιξη' ? 'selected' : '') + `>🛬 Άφιξη</option>
-                                <option value="Αναχώρηση" ` + (editData.type_move === 'Αναχώρηση' ? 'selected' : '') + `>🛫 Αναχώρηση</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>Άτομα:</label>
-                            <select name="pax" required>
-                                ` + [1,2,3,4,5,6,7,8,9,10].map(n => `<option value="`+n+`" `+(editData.pax == n ? 'selected' : '')+`>`+n+` άτομα</option>`).join('') + `
-                            </select>
-                        </div>
-                        <div>
-                            <label>Πλοίο / Μέσο:</label>
-                            <select name="vessel">
-                                <option value="">-- Επιλογή Πλοίου --</option>
-                                <option value="Παναγία Σκιαδενη" ` + (editData.vessel === 'Παναγία Σκιαδενη' ? 'selected' : '') + `>Παναγία Σκιαδενη</option>
-                                <option value="Σεμπεκο" ` + (editData.vessel === 'Σεμπεκο' ? 'selected' : '') + `>Σεμπεκο</option>
-                                <option value="Blue Star" ` + (editData.vessel === 'Blue Star' ? 'selected' : '') + `>Blue Star</option>
-                                <option value="Saos" ` + (editData.vessel === 'Saos' ? 'selected' : '') + `>Saos</option>
-                                <option value="Άλλο / Σχόλιο" ` + (editData.vessel === 'Άλλο / Σχόλιο' ? 'selected' : '') + `>Άλλο / Σχόλιο</option>
-                            </select>
-                        </div>
-                        <div><label>Σημειώσεις:</label><input type="text" name="notes" value="` + editData.notes + `" placeholder="π.χ. έξτρα σχόλια"></div>
-                    </div>
-                    <button type="submit" class="submit-btn ` + (editId ? 'update-btn' : '') + `">` + (editId ? 'Αποθήκευση Αλλαγών' : 'Προσθήκη στο Πρόγραμμα') + `</button>
-                    ` + (editId ? `<a href="/?date=` + selectedDate + `" class="cancel-edit-btn">Ακύρωση Επεξεργασίας</a>` : '') + `
-                </form>
-            </div>
+            ` + actionFormHTML + `
         </body>
         </html>
     `);
 });
 
 app.post('/add', isAuthenticated, (req, res) => {
+    if (!isAdmin(req)) return res.status(403).send("Δεν έχετε δικαίωμα καταχώρησης.");
     const { date, time, room, type_move, pax, vessel, notes } = req.body;
     const transfers = loadTransfers();
     transfers.push({
@@ -244,6 +271,7 @@ app.post('/add', isAuthenticated, (req, res) => {
 });
 
 app.post('/update', isAuthenticated, (req, res) => {
+    if (!isAdmin(req)) return res.status(403).send("Δεν έχετε δικαίωμα επεξεργασίας.");
     const { id, date, time, room, type_move, pax, vessel, notes } = req.body;
     let transfers = loadTransfers();
     const index = transfers.findIndex(t => t.id === id);
@@ -255,6 +283,7 @@ app.post('/update', isAuthenticated, (req, res) => {
 });
 
 app.get('/delete/:id', isAuthenticated, (req, res) => {
+    if (!isAdmin(req)) return res.status(403).send("Δεν έχετε δικαίωμα διαγραφής.");
     const { date } = req.query;
     let transfers = loadTransfers();
     transfers = transfers.filter(t => t.id !== req.params.id);
@@ -262,7 +291,7 @@ app.get('/delete/:id', isAuthenticated, (req, res) => {
     res.redirect('/?date=' + date);
 });
 
-function renderScheduleForDate(targetDate) {
+function renderScheduleForDate(targetDate, userIsAdmin) {
     const transfers = loadTransfers();
     const filtered = transfers.filter(t => t.date === targetDate);
     
@@ -294,10 +323,13 @@ function renderScheduleForDate(targetDate) {
                 </div>
                 ` + (t.vessel ? `<div style="font-size:14px; margin-top:2px; color:#512da8;">🚢 <b>` + t.vessel + `</b></div>` : '') + `
                 ` + (t.notes ? `<div style="font-size:13px; margin-top:2px; color:#666; font-style:italic;">📝 ` + t.notes + `</div>` : '') + `
+                
+                ` + (userIsAdmin ? `
                 <div class="actions-box">
                     <a href="/?date=` + targetDate + `&edit=` + t.id + `" class="edit-btn" title="Επεξεργασία">✏️</a>
                     <a href="/delete/` + t.id + `?date=` + targetDate + `" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')" title="Διαγραφή">❌</a>
                 </div>
+                ` : '') + `
             </div>
         `;
     });

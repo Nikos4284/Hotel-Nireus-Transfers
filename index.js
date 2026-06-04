@@ -1,4 +1,4 @@
-const express = require('express');
+Const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -107,6 +107,14 @@ app.get('/', isAuthenticated, (req, res) => {
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
     const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
     const selectedDate = req.query.date || localISODate;
+    const editId = req.query.edit || null;
+
+    let editData = { id: '', time: '', room: '', type_move: 'Άφιξη', pax: '2', vessel: '', notes: '' };
+    if (editId) {
+        const transfers = loadTransfers();
+        const found = transfers.find(t => t.id === editId);
+        if (found) editData = found;
+    }
 
     res.send(`
         <!DOCTYPE html>
@@ -121,6 +129,7 @@ app.get('/', isAuthenticated, (req, res) => {
                 .header h1 { margin: 0; font-size: 20px; }
                 .logout-btn { color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 4px; font-size: 14px; }
                 .container { background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
+                .container.edit-mode { border: 2px solid #0288d1; background: #f1f8ff; }
                 .date-picker-box { background: #e8eaf6; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #c5cae9; }
                 h2 { margin-top: 0; color: #512da8; border-bottom: 2px solid #eee; padding-bottom: 8px; font-size: 18px; }
                 .form-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -128,6 +137,8 @@ app.get('/', isAuthenticated, (req, res) => {
                 label { font-weight: bold; font-size: 14px; }
                 input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 15px; }
                 button.submit-btn { background: #2e7d32; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; font-weight: bold; }
+                button.submit-btn.update-btn { background: #0288d1; }
+                .cancel-edit-btn { display: block; text-align: center; background: #757575; color: white; text-decoration: none; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 15px; font-weight: bold; }
                 .print-btn { background: #0288d1; color: white; border: none; padding: 10px 16px; border-radius: 4px; font-size: 15px; cursor: pointer; font-weight: bold; margin-bottom: 15px; display: inline-flex; align-items: center; gap: 8px; }
                 .day-block { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
                 .day-header { background: #512da8; padding: 10px 15px; font-weight: bold; color: white; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom: 1px solid #ddd; }
@@ -137,11 +148,13 @@ app.get('/', isAuthenticated, (req, res) => {
                 .type-badge { padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 13px; display: inline-block; }
                 .arrival { background: #e8f5e9; color: #2e7d32; }
                 .departure { background: #ffebee; color: #c62828; }
-                .delete-btn { position: absolute; top: 12px; right: 15px; color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 14px; padding: 5px; }
+                .actions-box { position: absolute; top: 12px; right: 15px; display: flex; gap: 10px; }
+                .edit-btn { color: #0288d1; text-decoration: none; font-weight: bold; font-size: 16px; padding: 5px; }
+                .delete-btn { color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 16px; padding: 5px; }
 
                 @media print {
                     body { background: white; padding: 0; }
-                    .header, .date-picker-box, .container, .print-btn, .delete-btn, h2 { display: none !important; }
+                    .header, .date-picker-box, .container, .print-btn, .actions-box, h2 { display: none !important; }
                     .day-block { border: none; box-shadow: none; }
                     .day-header { background: #512da8 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     .time-badge { background: #512da8 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -172,53 +185,46 @@ app.get('/', isAuthenticated, (req, res) => {
                 ` + renderScheduleForDate(selectedDate) + `
             </div>
 
-            <div class="container">
-                <h2>➕ Νέα Καταχώρηση για την ημέρα αυτή</h2>
-                <form action="/add" method="POST">
+            <div class="container ` + (editId ? 'edit-mode' : '') + `">
+                <h2>` + (editId ? '✏️ Επεξεργασία Καταχώρησης' : '➕ Νέα Καταχώρηση για την ημέρα αυτή') + `</h2>
+                <form action="` + (editId ? '/update' : '/add') + `" method="POST">
                     <input type="hidden" name="date" value="` + selectedDate + `">
+                    ` + (editId ? `<input type="hidden" name="id" value="` + editData.id + `">` : '') + `
                     
                     <div class="form-grid">
                         <div>
                             <label>Ώρα (24h - π.χ. 17:15):</label>
-                            <input type="time" name="time" required style="font-variant-numeric: tabular-nums;" autocomplete="off">
+                            <input type="time" name="time" value="` + editData.time + `" required style="font-variant-numeric: tabular-nums;" autocomplete="off">
                         </div>
-                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
+                        <div><label>Όνομα Πελάτη / Δωμάτιο:</label><input type="text" name="room" value="` + editData.room + `" placeholder="π.χ. Παπαδόπουλος - Δωμ. 202" required></div>
                         <div>
                             <label>Τύπος Κίνησης:</label>
                             <select name="type_move" required>
-                                <option value="Άφιξη">🛬 Άφιξη</option>
-                                <option value="Αναχώρηση">🛫 Αναχώρηση</option>
+                                <option value="Άφιξη" ` + (editData.type_move === 'Άφιξη' ? 'selected' : '') + `>🛬 Άφιξη</option>
+                                <option value="Αναχώρηση" ` + (editData.type_move === 'Αναχώρηση' ? 'selected' : '') + `>🛫 Αναχώρηση</option>
                             </select>
                         </div>
                         <div>
                             <label>Άτομα:</label>
                             <select name="pax" required>
-                                <option value="1">1 άτομο</option>
-                                <option value="2" selected>2 άτομα</option>
-                                <option value="3">3 άτομα</option>
-                                <option value="4">4 άτομα</option>
-                                <option value="5">5 άτομα</option>
-                                <option value="6">6 άτομα</option>
-                                <option value="7">7 άτομα</option>
-                                <option value="8">8 άτομα</option>
-                                <option value="9">9 άτομα</option>
-                                <option value="10">10 άτομα</option>
+                                ` + [1,2,3,4,5,6,7,8,9,10].map(n => `<option value="`+n+`" `+(editData.pax == n ? 'selected' : '')+`>`+n+` άτομα</option>`).join('') + `
                             </select>
                         </div>
                         <div>
                             <label>Πλοίο / Μέσο:</label>
                             <select name="vessel">
                                 <option value="">-- Επιλογή Πλοίου --</option>
-                                <option value="Παναγία Σκιαδενη">Παναγία Σκιαδενη</option>
-                                <option value="Σεμπεκο">Σεμπεκο</option>
-                                <option value="Blue Star">Blue Star</option>
-                                <option value="Saos">Saos</option>
-                                <option value="Άλλο / Σχόλιο">Άλλο / Σχόλιο</option>
+                                <option value="Παναγία Σκιαδενη" ` + (editData.vessel === 'Παναγία Σκιαδενη' ? 'selected' : '') + `>Παναγία Σκιαδενη</option>
+                                <option value="Σεμπεκο" ` + (editData.vessel === 'Σεμπεκο' ? 'selected' : '') + `>Σεμπεκο</option>
+                                <option value="Blue Star" ` + (editData.vessel === 'Blue Star' ? 'selected' : '') + `>Blue Star</option>
+                                <option value="Saos" ` + (editData.vessel === 'Saos' ? 'selected' : '') + `>Saos</option>
+                                <option value="Άλλο / Σχόλιο" ` + (editData.vessel === 'Άλλο / Σχόλιο' ? 'selected' : '') + `>Άλλο / Σχόλιο</option>
                             </select>
                         </div>
-                        <div><label>Σημειώσεις:</label><input type="text" name="notes" placeholder="π.χ. έξτρα σχόλια"></div>
+                        <div><label>Σημειώσεις:</label><input type="text" name="notes" value="` + editData.notes + `" placeholder="π.χ. έξτρα σχόλια"></div>
                     </div>
-                    <button type="submit" class="submit-btn">Προσθήκη στο Πρόγραμμα</button>
+                    <button type="submit" class="submit-btn ` + (editId ? 'update-btn' : '') + `">` + (editId ? 'Αποθήκευση Αλλαγών' : 'Προσθήκη στο Πρόγραμμα') + `</button>
+                    ` + (editId ? `<a href="/?date=` + selectedDate + `" class="cancel-edit-btn">Ακύρωση Επεξεργασίας</a>` : '') + `
                 </form>
             </div>
         </body>
@@ -234,6 +240,17 @@ app.post('/add', isAuthenticated, (req, res) => {
         date, time, room, type_move, pax, vessel, notes
     });
     saveTransfers(transfers);
+    res.redirect('/?date=' + date);
+});
+
+app.post('/update', isAuthenticated, (req, res) => {
+    const { id, date, time, room, type_move, pax, vessel, notes } = req.body;
+    let transfers = loadTransfers();
+    const index = transfers.findIndex(t => t.id === id);
+    if (index !== -1) {
+        transfers[index] = { id, date, time, room, type_move, pax, vessel, notes };
+        saveTransfers(transfers);
+    }
     res.redirect('/?date=' + date);
 });
 
@@ -277,7 +294,10 @@ function renderScheduleForDate(targetDate) {
                 </div>
                 ` + (t.vessel ? `<div style="font-size:14px; margin-top:2px; color:#512da8;">🚢 <b>` + t.vessel + `</b></div>` : '') + `
                 ` + (t.notes ? `<div style="font-size:13px; margin-top:2px; color:#666; font-style:italic;">📝 ` + t.notes + `</div>` : '') + `
-                <a href="/delete/` + t.id + `?date=` + targetDate + `" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')">❌</a>
+                <div class="actions-box">
+                    <a href="/?date=` + targetDate + `&edit=` + t.id + `" class="edit-btn" title="Επεξεργασία">✏️</a>
+                    <a href="/delete/` + t.id + `?date=` + targetDate + `" class="delete-btn" onclick="return confirm('Σίγουρα διαγραφή;')" title="Διαγραφή">❌</a>
+                </div>
             </div>
         `;
     });
